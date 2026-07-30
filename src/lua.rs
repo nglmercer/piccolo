@@ -15,8 +15,8 @@ use crate::{
     },
     string::InternedStringSet,
     thread::BadThreadMode,
-    Error, ExternError, FromMultiValue, FromValue, Fuel, IntoValue, Registry, RuntimeError,
-    Singleton, StashedExecutor, String, Table, TypeError, Value,
+    Error, Executor, ExternError, FromMultiValue, FromValue, Fuel, IntoValue, Registry,
+    RuntimeError, Singleton, StashedExecutor, String, Table, TypeError, Value,
 };
 
 /// A value representing the main "execution context" of a Lua state.
@@ -206,7 +206,7 @@ impl Lua {
     pub fn gc_collect(&mut self) {
         if self.arena.collection_phase() != CollectionPhase::Sweeping {
             self.arena.mark_all().unwrap().finalize(|fc, root| {
-                root.finalizers.prepare(fc);
+                root.finalizers.prepare(root.ctx(fc), fc);
             });
             self.arena.mark_all().unwrap().finalize(|fc, root| {
                 root.finalizers.finalize(fc);
@@ -215,6 +215,29 @@ impl Lua {
 
         self.arena.collect_all();
         assert!(self.arena.collection_phase() == CollectionPhase::Sleeping);
+
+        // Run any `__gc` finalizers that were queued during collection.
+        self.run_finalizers();
+    }
+
+    /// Run all pending `__gc` finalizers queued by the most recent collection cycle.
+    ///
+    /// Each finalizer is run through its own short-lived [`Executor`]. Finalizers may allocate and
+    /// even resurrect further objects; those are handled by subsequent collections. Errors raised
+    /// by a finalizer are discarded so that a misbehaving finalizer cannot break the VM.
+    fn run_finalizers(&mut self) {
+        loop {
+            let executor = self.enter(|ctx| {
+                let (object, function) = ctx.finalizers().pop_pending(&ctx)?;
+                Some(ctx.stash(Executor::start(ctx, function, (object,))))
+            });
+            match executor {
+                Some(executor) => {
+                    let _ = self.execute::<()>(&executor);
+                }
+                None => break,
+            }
+        }
     }
 
     pub fn gc_metrics(&self) -> &Metrics {
@@ -245,7 +268,7 @@ impl Lua {
             } else {
                 if let Some(marked) = self.arena.mark_debt() {
                     marked.finalize(|fc, root| {
-                        root.finalizers.prepare(fc);
+                        root.finalizers.prepare(root.ctx(fc), fc);
                     });
                     self.arena.mark_all().unwrap().finalize(|fc, root| {
                         root.finalizers.finalize(fc);

@@ -209,6 +209,12 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
         Callback::from_fn(&ctx, |ctx, _, mut stack| {
             let (t, mt): (Table, Option<Table>) = stack.consume(ctx)?;
             t.set_metatable(&ctx, mt);
+            // Register the table for `__gc` finalization if its metatable defines a `__gc`.
+            if let Some(mt) = t.metatable() {
+                if !mt.get_value(ctx, meta_ops::MetaMethod::Gc).is_nil() {
+                    ctx.finalizers().register_table(&ctx, t.into_inner());
+                }
+            }
             stack.replace(ctx, t);
             Ok(CallbackReturn::Return)
         }),

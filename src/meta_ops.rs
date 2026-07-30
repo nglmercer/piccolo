@@ -41,6 +41,7 @@ pub enum MetaMethod {
     Concat,
     Lt,
     Le,
+    Gc,
 }
 
 impl MetaMethod {
@@ -70,6 +71,7 @@ impl MetaMethod {
             MetaMethod::Concat => "__concat",
             MetaMethod::Lt => "__lt",
             MetaMethod::Le => "__le",
+            MetaMethod::Gc => "__gc",
         }
     }
 
@@ -104,6 +106,7 @@ impl MetaMethod {
             MetaMethod::Concat => "concatenate",
             MetaMethod::Lt => "compare",
             MetaMethod::Le => "compare",
+            MetaMethod::Gc => "finalize",
         }
     }
 }
