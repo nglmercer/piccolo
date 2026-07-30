@@ -10,7 +10,8 @@ use crate::{
     finalizers::Finalizers,
     stash::{Fetchable, Stashable},
     stdlib::{
-        load_base, load_coroutine, load_io, load_math, load_os, load_string, load_table, load_utf8,
+        load_base, load_coroutine, load_io, load_math, load_os, load_package, load_string,
+        load_table, load_utf8,
     },
     string::InternedStringSet,
     thread::BadThreadMode,
@@ -188,6 +189,7 @@ impl Lua {
         self.enter(|ctx| {
             load_io(ctx);
             load_os(ctx);
+            load_package(ctx);
         })
     }
 
