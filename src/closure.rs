@@ -139,6 +139,22 @@ impl<'gc> FunctionPrototype<'gc> {
             &compiled_function,
         ))
     }
+
+    /// Return the source line number for the instruction at the given program counter.
+    ///
+    /// `opcode_line_numbers` is a sorted list of `(opcode_index, line)` pairs where each line
+    /// applies from its index until the next pair. The given `pc` is clamped to the last executed
+    /// instruction, so passing the index of the next instruction to run yields the current line.
+    pub fn line_at(&self, pc: usize) -> compiler::LineNumber {
+        match self
+            .opcode_line_numbers
+            .binary_search_by_key(&pc, |(opi, _)| *opi)
+        {
+            Ok(i) => self.opcode_line_numbers[i].1,
+            Err(0) => compiler::LineNumber(0),
+            Err(i) => self.opcode_line_numbers[i - 1].1,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Collect)]

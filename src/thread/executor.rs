@@ -645,14 +645,49 @@ impl<'gc, 'a> Execution<'gc, 'a> {
         Some(UpperLuaFrame {
             chunk_name: proto.chunk_name,
             current_function: proto.reference,
-            current_line: match proto
-                .opcode_line_numbers
-                .binary_search_by_key(&call_opcode, |(opi, _)| *opi)
-            {
-                Ok(i) => proto.opcode_line_numbers[i].1,
-                Err(i) => proto.opcode_line_numbers[i - 1].1,
-            },
+            current_line: proto.line_at(call_opcode),
         })
+    }
+
+    /// Return the source location (chunk name and line) of the Lua frame `level` frames up the
+    /// stack, where level 1 is the immediate Lua caller of the currently running callback. Returns
+    /// `None` if there is no such Lua frame.
+    pub fn lua_location(&self, level: usize) -> Option<(String<'gc>, LineNumber)> {
+        let mut seen = 0;
+        for frame in self.upper_frames.iter().rev() {
+            if let Frame::Lua { closure, pc, .. } = frame {
+                seen += 1;
+                if seen == level {
+                    let proto = closure.prototype();
+                    return Some((proto.chunk_name, proto.line_at(pc.saturating_sub(1))));
+                }
+            }
+        }
+        None
+    }
+
+    /// Build a multi-line stack traceback for the currently running thread, listing each Lua frame
+    /// as `\t<chunk>:<line>: in <function>`.
+    pub fn traceback(&self) -> std::string::String {
+        let mut out = std::string::String::from("stack traceback:");
+        for frame in self.upper_frames.iter().rev() {
+            if let Frame::Lua { closure, pc, .. } = frame {
+                let proto = closure.prototype();
+                let line = proto.line_at(pc.saturating_sub(1));
+                out.push_str("\n\t");
+                out.push_str(&proto.chunk_name.display_lossy().to_string());
+                out.push(':');
+                out.push_str(&line.to_string());
+                out.push_str(": in ");
+                out.push_str(
+                    &proto
+                        .reference
+                        .map_strings(|s| s.display_lossy().to_string())
+                        .to_string(),
+                );
+            }
+        }
+        out
     }
 }
 

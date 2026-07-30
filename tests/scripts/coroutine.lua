@@ -41,9 +41,10 @@ do
     local e2, r2 = coroutine.resume(co)
     local s2 = coroutine.status(co)
 
+    -- `error` prepends a source location and appends a traceback, so match the message substring.
     assert(
         e1 == true and r1 == 1 and s1 == "suspended" and
-        e2 == false and r2 == 'test error' and s2 == "dead")
+        e2 == false and string.find(r2, 'test error', 1, true) and s2 == "dead")
 end
 
 do

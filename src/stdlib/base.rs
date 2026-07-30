@@ -94,18 +94,32 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "error",
-        Callback::from_fn(&ctx, |_, _, stack| Err(stack.get(0).into())),
+        Callback::from_fn(&ctx, |ctx, exec, stack| {
+            let level = match stack.get(1) {
+                Value::Nil => 1,
+                v => v.to_integer().unwrap_or(1),
+            } as usize;
+            Err(Error::from(augment_error(
+                ctx,
+                &exec,
+                stack.get(0),
+                level,
+            )))
+        }),
     );
 
     ctx.set_global(
         "assert",
-        Callback::from_fn(&ctx, |ctx, _, stack| {
+        Callback::from_fn(&ctx, |ctx, exec, stack| {
             if stack.get(0).to_bool() {
                 Ok(CallbackReturn::Return)
-            } else if stack.get(1).is_nil() {
-                Err("assertion failed!".into_value(ctx).into())
             } else {
-                Err(stack.get(1).into())
+                let message = if stack.get(1).is_nil() {
+                    "assertion failed!".into_value(ctx)
+                } else {
+                    stack.get(1)
+                };
+                Err(Error::from(augment_error(ctx, &exec, message, 1)))
             }
         }),
     );
@@ -374,4 +388,39 @@ impl<'gc> Sequence<'gc> for PCall {
         stack.replace(ctx, (false, error));
         Ok(SequencePoll::Return)
     }
+}
+
+/// Augment an error message with source-location and stack-traceback context, matching the
+/// behavior of Lua's `error`/`assert`.
+///
+/// Non-string messages are returned unchanged (Lua only adds position info to string messages).
+/// When `level` is 0, no position or traceback information is added. Otherwise the location of the
+/// Lua frame `level` frames up the stack is prepended as `<chunk>:<line>: ` and a full stack
+/// traceback is appended.
+fn augment_error<'gc>(
+    ctx: Context<'gc>,
+    exec: &Execution<'gc, '_>,
+    message: Value<'gc>,
+    level: usize,
+) -> Value<'gc> {
+    let Value::String(msg) = message else {
+        return message;
+    };
+
+    let mut out = std::string::String::new();
+    if level > 0 {
+        if let Some((chunk, line)) = exec.lua_location(level) {
+            out.push_str(&chunk.display_lossy().to_string());
+            out.push(':');
+            out.push_str(&line.to_string());
+            out.push_str(": ");
+        }
+        out.push_str(&msg.display_lossy().to_string());
+        out.push('\n');
+        out.push_str(&exec.traceback());
+    } else {
+        out.push_str(&msg.display_lossy().to_string());
+    }
+
+    ctx.intern(out.as_bytes()).into_value(ctx)
 }

@@ -6,11 +6,12 @@ do
         return "good"
     end
 
+    -- `error` prepends a source location and appends a traceback, so match the message substring.
     local r1, e1 = pcall(error_func, "test error")
-    assert(r1 == false and e1 == "test error")
+    assert(r1 == false and string.find(e1, "test error", 1, true))
 
     local r2, e2 = pcall(error_func, "test error 2")
-    assert(r2 == false and e2 == "test error 2")
+    assert(r2 == false and string.find(e2, "test error 2", 1, true))
 
     local r3, e3 = pcall(good_func)
     assert(r3 == true and e3 == "good")
