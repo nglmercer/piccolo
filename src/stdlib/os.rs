@@ -151,7 +151,7 @@ pub fn load_os<'gc>(ctx: Context<'gc>) {
     os.set_field(
         ctx,
         "exit",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |_ctx, _, stack| {
             let code = stack.get(0);
             let exit_code = match code {
                 Value::Boolean(b) => {
